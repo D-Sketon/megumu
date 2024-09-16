@@ -1,0 +1,26 @@
+{
+  "name": "megumu",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "author": "D-Sketon",
+  "license": "MIT",
+  "description": "A simple way to monitor your os",
+  "devDependencies": {
+    "@types/node": "^22.5.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/D-Sketon/megumu.git"
+  },
+  "homepage": "https://github.com/D-Sketon/megumu#readme",
+  "bugs": {
+    "url": "https://github.com/D-Sketon/megumu/issues"
+  }
+}
