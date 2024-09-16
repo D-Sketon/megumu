@@ -1,5 +1,5 @@
 <div align = center>
-  <img src="https://fastly.jsdelivr.net/gh/D-Sketon/blog-img/megumu.png">
+  <img src="https://fastly.jsdelivr.net/gh/D-Sketon/blog-img/megumu.png" width="128">
   <h1>megumu</h1>
   <h4>A simple way to monitor your operating system</h4>
 </div>
