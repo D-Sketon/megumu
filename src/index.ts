@@ -1,4 +1,4 @@
-import memory from "./memory";
-import cpu from "./cpu";
+import Memory from "./memory";
+import Cpu from "./cpu";
 
-export { memory, cpu };
+export { Memory, Cpu };

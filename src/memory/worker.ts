@@ -1,52 +1,28 @@
+import {
+  WorkerEventListener,
+  WorkerListener,
+  WorkerListenerResponse,
+} from "../utils/worker-event-listener";
+import { workerMessageRouter } from "../utils/worker-message";
+import { MemoryBasicMeta, MemoryMeta, MemoryTarget, OSMemory } from "./type";
 import os from "os";
-import { EventListener, type Listener } from "./utils";
 
-type MemoryTarget =
-  | "OS"
-  | "RSS"
-  | "HEAP_TOTAL"
-  | "HEAP_USED"
-  | "EXTERNAL"
-  | "ARRAY_BUFFER";
-
-type MemoryTickMeta = {
-  target: MemoryTarget;
-  type: "TICK";
-};
-
-type MemoryBasicMeta = {
-  target: MemoryTarget;
-  type: "LE" | "GE";
-  duration: number;
-  value: number | string;
-  _triggeredTime?: number;
-};
-
-type MemoryMeta = MemoryBasicMeta | MemoryTickMeta;
-
-type MemoryCallback<T> = T extends { target: "OS" }
-  ? (memory: { total: number; free: number }) => void
-  : (memory: number) => void;
-
-class Memory extends EventListener<MemoryMeta> {
-  addEventListener<T extends MemoryMeta>(
-    meta: T,
-    callback: MemoryCallback<T>,
-    interval: number
-  ): () => void;
-  addEventListener(
-    meta: MemoryMeta,
-    callback: Function,
-    interval: number
-  ): () => void {
-    return super.addEventListener(meta, callback, interval);
+class MemoryWorkerEventListener extends WorkerEventListener<MemoryMeta> {
+  constructor() {
+    super();
   }
 
-  callback(listener: Listener<MemoryMeta>): void {
+  getData(
+    listener: WorkerListener<MemoryMeta>
+  ): WorkerListenerResponse<number | OSMemory> | void {
+    const timestamp = Date.now();
     const { type, target } = listener.meta;
     const currentMemory = this.getMemory(target);
     if (type === "TICK") {
-      listener.callback(currentMemory);
+      return {
+        timestamp,
+        data: currentMemory,
+      };
     } else {
       const { value } = listener.meta;
       let parsedTargetMemory: number = value as any;
@@ -84,23 +60,25 @@ class Memory extends EventListener<MemoryMeta> {
       }
       if (type === "LE") {
         if (parsedCurrentMemory < parsedTargetMemory) {
-          this.triggerCallback(
-            listener as Listener<MemoryBasicMeta>,
-            currentMemory
+          return this.triggerCallback(
+            listener as WorkerListener<MemoryBasicMeta>,
+            currentMemory,
+            timestamp
           );
         }
       } else if (type === "GE") {
         if (parsedCurrentMemory > parsedTargetMemory) {
-          this.triggerCallback(
-            listener as Listener<MemoryBasicMeta>,
-            currentMemory
+          return this.triggerCallback(
+            listener as WorkerListener<MemoryBasicMeta>,
+            currentMemory,
+            timestamp
           );
         }
       }
     }
   }
 
-  private parseMemoryString(memory: string) {
+  private parseMemoryString(memory: string): number {
     const unit = memory.slice(-2).toLowerCase();
     let value = parseFloat(memory);
     switch (unit) {
@@ -117,37 +95,30 @@ class Memory extends EventListener<MemoryMeta> {
     }
   }
 
-  private getMemory(
-    target: MemoryTarget
-  ): number | { total: number; free: number } {
-    const { rss, heapTotal, heapUsed, external, arrayBuffers } =
-      process.memoryUsage();
+  private getMemory(target: MemoryTarget): number | OSMemory {
+    const { rss } = process.memoryUsage();
     switch (target) {
       case "OS":
         return { total: os.totalmem(), free: os.freemem() };
       case "RSS":
         return rss;
-      case "HEAP_TOTAL":
-        return heapTotal;
-      case "HEAP_USED":
-        return heapUsed;
-      case "EXTERNAL":
-        return external;
-      case "ARRAY_BUFFER":
-        return arrayBuffers;
     }
   }
 
   private triggerCallback(
-    listener: Listener<MemoryBasicMeta>,
-    memory: number | { total: number; free: number }
-  ) {
+    listener: WorkerListener<MemoryBasicMeta>,
+    memory: number | OSMemory,
+    timestamp: number
+  ): WorkerListenerResponse<number | OSMemory> | void {
     const { _triggeredTime, duration } = listener.meta;
     const now = Date.now();
     if (_triggeredTime) {
       if (now - _triggeredTime >= duration) {
-        listener.callback(memory);
         listener.meta._triggeredTime = now;
+        return {
+          timestamp,
+          data: memory,
+        };
       }
     } else {
       listener.meta._triggeredTime = now;
@@ -155,4 +126,4 @@ class Memory extends EventListener<MemoryMeta> {
   }
 }
 
-export default new Memory();
+workerMessageRouter(new MemoryWorkerEventListener());

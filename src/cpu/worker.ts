@@ -1,49 +1,32 @@
+import { sleep } from "../utils/timer";
+import {
+  WorkerEventListener,
+  WorkerListener,
+  WorkerListenerResponse,
+} from "../utils/worker-event-listener";
+import { CpuBasicMeta, CpuInfo, CpuMeta } from "./types";
 import os from "os";
-import { EventListener, sleep, type Listener } from "./utils";
+import { workerMessageRouter } from "../utils/worker-message";
 
-type CpuTickMeta = {
-  type: "TICK";
-  sampleInterval?: number;
-};
-
-type CpuBasicMeta = {
-  type: "LE" | "GE";
-  duration: number;
-  value: number | string;
-  sampleInterval?: number;
-  _triggeredTime?: number;
-};
-
-type CpuMeta = CpuBasicMeta | CpuTickMeta;
-
-interface CpuInfo {
-  idle: number;
-  total: number;
-}
-
-class Cpu extends EventListener<CpuMeta> {
-  addEventListener(
-    meta: CpuMeta,
-    callback: (meta: CpuInfo) => void,
-    interval: number
-  ): () => void;
-  addEventListener(
-    meta: CpuMeta,
-    callback: Function,
-    interval: number
-  ): () => void {
-    return super.addEventListener(meta, callback, interval);
+class CpuWorkerEventListener extends WorkerEventListener<CpuMeta> {
+  constructor() {
+    super();
   }
 
-  callback(listener: Listener<CpuMeta>): void {
+  async getData(
+    listener: WorkerListener<CpuMeta>
+  ): Promise<WorkerListenerResponse<CpuInfo> | void> {
+    const timestamp = Date.now();
     const { type, sampleInterval = 1000 } = listener.meta;
     if (sampleInterval > listener.interval) {
       throw new Error("Sample interval cannot be greater than the interval");
     }
     if (type === "TICK") {
-      this.measureCpuLoad().then((cpu) => {
-        listener.callback(cpu);
-      });
+      const cpu = await this.measureCpuLoad();
+      return {
+        timestamp,
+        data: cpu,
+      };
     } else {
       const { value } = listener.meta;
       let parsedValue: number = value as any;
@@ -54,18 +37,25 @@ class Cpu extends EventListener<CpuMeta> {
           parsedValue = parseFloat(value);
         }
       }
-      this.measureCpuLoad(sampleInterval).then((cpu) => {
-        const percentage = 1 - cpu.idle / cpu.total;
-        if (type === "LE") {
-          if (percentage <= parsedValue) {
-            this.triggerCallback(listener as Listener<CpuBasicMeta>, cpu);
-          }
-        } else if (type === "GE") {
-          if (percentage >= parsedValue) {
-            this.triggerCallback(listener as Listener<CpuBasicMeta>, cpu);
-          }
+      const cpuLoadMeasurement = await this.measureCpuLoad(sampleInterval);
+      const percentage = 1 - cpuLoadMeasurement.idle / cpuLoadMeasurement.total;
+      if (type === "LE") {
+        if (percentage <= parsedValue) {
+          return this.triggerCallback(
+            listener as WorkerListener<CpuBasicMeta>,
+            cpuLoadMeasurement,
+            timestamp
+          );
         }
-      });
+      } else if (type === "GE") {
+        if (percentage >= parsedValue) {
+          return this.triggerCallback(
+            listener as WorkerListener<CpuBasicMeta>,
+            cpuLoadMeasurement,
+            timestamp
+          );
+        }
+      }
     }
   }
 
@@ -102,13 +92,20 @@ class Cpu extends EventListener<CpuMeta> {
     return { idle, total };
   }
 
-  private triggerCallback(listener: Listener<CpuBasicMeta>, cpu: CpuInfo) {
+  private triggerCallback(
+    listener: WorkerListener<CpuBasicMeta>,
+    cpu: CpuInfo,
+    timestamp: number
+  ): WorkerListenerResponse<CpuInfo> | void {
     const { _triggeredTime, duration } = listener.meta;
     const now = Date.now();
     if (_triggeredTime) {
       if (now - _triggeredTime >= duration) {
-        listener.callback(cpu);
         listener.meta._triggeredTime = now;
+        return {
+          timestamp,
+          data: cpu,
+        };
       }
     } else {
       listener.meta._triggeredTime = now;
@@ -116,4 +113,4 @@ class Cpu extends EventListener<CpuMeta> {
   }
 }
 
-export default new Cpu();
+workerMessageRouter(new CpuWorkerEventListener());
