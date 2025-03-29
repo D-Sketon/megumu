@@ -17,7 +17,10 @@ npm install megumu --save
 Simple example:
 
 ```javascript
-import { cpu, memory } from "megumu";
+import { Cpu, Memory } from "megumu";
+
+const cpu = new Cpu();
+const memory = new Memory();
 
 // Get CPU usage
 cpu.addEventListener(
@@ -25,7 +28,7 @@ cpu.addEventListener(
     type: "TICK",
   },
   (data) => {
-    console.log(data);
+    console.log(data.timestamp, data.data);
   },
   1000
 );
@@ -42,19 +45,29 @@ memory.addEventListener(
   },
   (data) => {
     // This callback is triggered only when the system memory usage is greater than 2GB and lasts for 10s
-    console.log(data);
+    console.log(data.timestamp, data.data);
   },
   1000
 );
 
 memory.startSampling();
+
+// Stop sampling after 10s
+setTimeout(() => {
+  cpu.stopSampling();
+  memory.stopSampling();
+
+  // Stop the monitor and remove all event listeners
+  cpu.destroy();
+  memory.destroy();
+}, 10000);
 ```
 
 ### API
 
 #### Public API
 
-Both `cpu` and `memory` have the same public API below:
+Both `Cpu` and `Memory` instance have the same public API below:
 
 ##### `addEventListener`
 
@@ -121,7 +134,7 @@ type CpuMeta = CpuBasicMeta | CpuTickMeta;
 ```typescript
 function addEventListener(
   meta: CpuMeta,
-  callback: (meta: CpuInfo) => void,
+  callback: (meta: WorkerListenerResponse<CpuInfo>) => void,
   interval: number
 ): () => void;
 ```
@@ -132,10 +145,6 @@ function addEventListener(
 type MemoryTarget =
   | "OS" // The total memory of the operating system
   | "RSS"
-  | "HEAP_TOTAL"
-  | "HEAP_USED"
-  | "EXTERNAL"
-  | "ARRAY_BUFFER";
 
 type MemoryTickMeta = {
   target: MemoryTarget; // The target of the memory monitor
@@ -156,8 +165,8 @@ type MemoryMeta = MemoryBasicMeta | MemoryTickMeta;
 
 ```typescript
 type MemoryCallback<T> = T extends { target: "OS" }
-  ? (memory: { total: number; free: number }) => void
-  : (memory: number) => void;
+  ? (memory: WorkerListenerResponse<{ total: number; free: number }>) => void
+  : (memory: WorkerListenerResponse<number>) => void;
 
 function addEventListener<T extends MemoryMeta>(
   meta: T,
